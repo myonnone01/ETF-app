@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ETF Buy Advisor — Technical Entry Analysis Dashboard</title>
+  <meta name="description" content="Institutional-quality technical analysis dashboard for timing ETF accumulation entries. Analyzes SPY, VOO, VTI, VT, VXUS, and QQQ.">
+  <link rel="stylesheet" href="css/styles.css">
+  <!-- Inline critical font loading -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Inline critical: prevent FOUC */
+    body { background: #0f1117; color: #e8e9ed; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+  </style>
+</head>
+<body>
+
+  <!-- Hidden SVG sprite sheet for reusable icons -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="icon-trend-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+      <polyline points="16 7 22 7 22 13"/>
+    </symbol>
+    <symbol id="icon-trend-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/>
+      <polyline points="16 17 22 17 22 11"/>
+    </symbol>
+    <symbol id="icon-trend-neutral" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="2" y1="12" x2="22" y2="12"/>
+      <polyline points="18 8 22 12 18 16"/>
+    </symbol>
+    <symbol id="icon-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="16" x2="12" y2="12"/>
+      <line x1="12" y1="8" x2="12.01" y2="8"/>
+    </symbol>
+  </svg>
+
+  <!-- Header -->
+  <header class="app-header" role="banner">
+    <div class="header-left">
+      <div class="logo" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 24 L12 16 L18 20 L28 8" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="28" cy="8" r="3" fill="#3b82f6"/>
+        </svg>
+      </div>
+      <div class="header-title">
+        <h1>ETF Buy Advisor</h1>
+        <span class="header-subtitle">Technical Entry Analysis Dashboard</span>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="strategy-selector" id="strategy-selector" role="group" aria-label="Strategy profile selection">
+        <button class="strategy-btn" data-profile="conservative" aria-pressed="false">Conservative</button>
+        <button class="strategy-btn active" data-profile="balanced" aria-pressed="true">Balanced</button>
+        <button class="strategy-btn" data-profile="aggressive" aria-pressed="false">Aggressive</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="data-status" id="data-status" role="status" aria-live="polite">
+        <span class="status-dot"></span>
+        <span class="status-text">Loading...</span>
+      </div>
+      <span class="last-updated" id="last-updated"></span>
+    </div>
+  </header>
+
+  <!-- Disclaimer Bar -->
+  <div class="disclaimer-bar" id="disclaimer-bar" role="alert">
+    <!-- Rendered by JS -->
+  </div>
+
+  <!-- Loading Screen -->
+  <div class="loading-screen" id="loading-screen" role="status" aria-live="polite" aria-label="Loading market data">
+    <div class="loading-content">
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <h2>Analyzing Market Conditions</h2>
+      <p>Calculating technical indicators and buy opportunity scores...</p>
+      <div class="loading-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+        <div class="loading-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content (hidden until loaded) -->
+  <main class="main-content" id="main-content" style="display:none">
+
+    <!-- Overview Cards Row -->
+    <section class="section overview-section" aria-label="Market overview">
+      <div class="section-header">
+        <h2>Market Overview</h2>
+        <span class="section-hint">Click any ETF for detailed analysis</span>
+      </div>
+      <div class="overview-cards" id="overview-cards" role="list">
+        <!-- Rendered by JS: 6 ETF cards -->
+      </div>
+    </section>
+
+    <!-- Two-column layout: Best Opportunities + Market Regime -->
+    <section class="section dual-panel" aria-label="Opportunities and market regime">
+      <div class="panel best-opportunities-panel">
+        <div class="panel-header">
+          <h2>Best Opportunities</h2>
+          <span class="panel-subtitle">Ranked by composite buy score</span>
+        </div>
+        <div id="best-opportunities">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+      <div class="panel market-regime-panel">
+        <div class="panel-header">
+          <h2>Market Regime</h2>
+          <span class="panel-subtitle">Broad market conditions assessment</span>
+        </div>
+        <div id="market-regime">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Detailed ETF View (shown when ETF selected) -->
+    <section class="section detailed-section" id="detailed-section" style="display:none" aria-label="Detailed ETF analysis">
+      <div class="section-header">
+        <h2 id="detail-title">Detailed Analysis</h2>
+        <button class="close-detail-btn" id="close-detail-btn" aria-label="Close detailed view">&#x2715; Close</button>
+      </div>
+      <div id="detailed-view">
+        <!-- Rendered by JS: charts, technical summary, entry plan, risk, commentary -->
+      </div>
+    </section>
+
+    <!-- Alerts / Watchlist Panel -->
+    <section class="section alerts-section" aria-label="Alerts and watchlist">
+      <div class="section-header">
+        <h2>Alerts &amp; Watchlist</h2>
+        <span class="section-hint">Configure entry signal notifications</span>
+      </div>
+      <div id="alerts-panel">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- Comparison Section -->
+    <section class="section comparison-section" aria-label="ETF comparisons">
+      <div class="section-header">
+        <h2>Relative Comparisons</h2>
+        <span class="section-hint">Head-to-head technical entry profiles</span>
+      </div>
+      <div id="comparison-section">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- Strategy Settings (expandable) -->
+    <section class="section settings-section" aria-label="Strategy settings">
+      <div class="section-header collapsible" id="settings-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="strategy-settings">
+        <h2>Strategy Settings</h2>
+        <span class="toggle-icon" aria-hidden="true">&#x25BC;</span>
+      </div>
+      <div class="settings-content" id="strategy-settings" style="display:none">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="section how-it-works-section" aria-label="How the app works">
+      <div class="section-header collapsible" id="how-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="how-it-works">
+        <h2>How the App Decides When to Buy</h2>
+        <span class="toggle-icon" aria-hidden="true">&#x25BC;</span>
+      </div>
+      <div class="how-content" id="how-it-works" style="display:none">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- Footer Disclaimer -->
+    <footer class="app-footer" role="contentinfo">
+      <div class="footer-content">
+        <p class="footer-disclaimer">
+          <strong>Important Disclosure:</strong> This application provides educational market analysis and technical decision support tools only.
+          It does not constitute personalized investment advice, a recommendation to buy or sell any security, or a guarantee of future returns.
+          Past performance and technical indicators do not guarantee future results. All investment decisions involve risk, including potential loss of principal.
+          Always consult with a qualified financial advisor before making investment decisions. This tool encourages diversification and disciplined risk management.
+        </p>
+        <p class="footer-meta">
+          ETF Buy Advisor — Technical Entry Analysis Dashboard<br>
+          Data may be delayed or simulated. For educational purposes only.
+        </p>
+      </div>
+    </footer>
+
+  </main>
+
+  <!-- Modal overlay for settings and info -->
+  <div class="modal-overlay" id="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="Information dialog">
+    <div class="modal-content" id="modal-content">
+      <!-- Dynamic modal content -->
+    </div>
+  </div>
+
+  <!-- Scripts (loaded in order) -->
+  <script src="js/config.js"></script>
+  <script src="js/data-service.js"></script>
+  <script src="js/indicators.js"></script>
+  <script src="js/scoring.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
