@@ -490,7 +490,63 @@ window.UI = (function() {
       aggressive: 'Allows earlier entries on pullbacks and oversold readings. Accepts higher risk for potentially better entry prices. Suited for investors comfortable buying into weakness with a long horizon.'
     };
     html += '<div class="profile-desc">' + (descriptions[profile] || descriptions.balanced) + '</div>';
+
+    // Data Source settings
+    var savedKey = localStorage.getItem('etf_av_api_key') || '';
+    html += '<div class="data-source-settings" style="margin-top:24px;padding-top:18px;border-top:1px solid #2a2d3a">' +
+      '<h3 style="font-size:0.95rem;margin-bottom:10px;color:#c8cad0">Data Source</h3>' +
+      '<p style="font-size:0.8rem;color:#8b8d97;margin-bottom:12px">' +
+        'The app tries multiple live data sources automatically (Yahoo Finance via CORS proxies). ' +
+        'For a reliable backup, add a free Alpha Vantage API key.' +
+      '</p>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<input type="text" id="av-api-key" placeholder="Alpha Vantage API Key (optional)" ' +
+          'value="' + savedKey + '" ' +
+          'style="flex:1;min-width:200px;padding:8px 12px;background:#12141c;border:1px solid #2a2d3a;border-radius:6px;color:#e8e9ed;font-size:0.85rem;font-family:inherit">' +
+        '<button id="save-av-key" style="padding:8px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-family:inherit">Save Key</button>' +
+        '<button id="refresh-data" style="padding:8px 16px;background:#22c55e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-family:inherit">Refresh Data</button>' +
+      '</div>' +
+      '<p style="font-size:0.75rem;color:#6b6d77;margin-top:8px">' +
+        'Get a free key at <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener" style="color:#3b82f6">alphavantage.co</a> (25 requests/day). ' +
+        'Key is stored locally in your browser only.' +
+      '</p>' +
+    '</div>';
+
     el.innerHTML = html;
+
+    // Bind data source buttons
+    var saveBtn = document.getElementById('save-av-key');
+    var refreshBtn = document.getElementById('refresh-data');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function() {
+        var key = document.getElementById('av-api-key').value.trim();
+        if (key) {
+          localStorage.setItem('etf_av_api_key', key);
+          saveBtn.textContent = 'Saved!';
+          saveBtn.style.background = '#22c55e';
+          setTimeout(function() { saveBtn.textContent = 'Save Key'; saveBtn.style.background = '#3b82f6'; }, 2000);
+        } else {
+          localStorage.removeItem('etf_av_api_key');
+          saveBtn.textContent = 'Cleared';
+          setTimeout(function() { saveBtn.textContent = 'Save Key'; saveBtn.style.background = '#3b82f6'; }, 2000);
+        }
+      });
+    }
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function() {
+        refreshBtn.textContent = 'Refreshing...';
+        refreshBtn.disabled = true;
+        if (window.App && window.App.init) {
+          window.App.init().then(function() {
+            refreshBtn.textContent = 'Refresh Data';
+            refreshBtn.disabled = false;
+          }).catch(function() {
+            refreshBtn.textContent = 'Refresh Data';
+            refreshBtn.disabled = false;
+          });
+        }
+      });
+    }
   }
 
   // ── HOW IT WORKS ─────────────────────────────────────────────────────

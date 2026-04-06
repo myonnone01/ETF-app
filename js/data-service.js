@@ -319,66 +319,192 @@
   }
 
   // -----------------------------------------------------------------------
-  // Yahoo Finance live data fetcher
+  // Live data fetching — multi-strategy with CORS proxy fallbacks
   // -----------------------------------------------------------------------
 
+  /** Simple in-memory cache: symbol -> { data, timestamp } */
+  const _cache = {};
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
   /**
-   * Attempt to fetch real price data from Yahoo Finance v8 API.
-   * Falls back to mock data on any error (CORS, network, parse, etc.).
+   * Parse Yahoo Finance v8 JSON into our candle format.
+   * @param {Object} json – raw Yahoo response
+   * @returns {Array} daily candles
+   */
+  function parseYahooResponse(json) {
+    const result = json.chart.result[0];
+    const timestamps = result.timestamp;
+    const quote = result.indicators.quote[0];
+
+    if (!timestamps || !quote) throw new Error('Unexpected Yahoo payload shape');
+
+    const daily = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      if (
+        quote.open[i] == null ||
+        quote.close[i] == null ||
+        quote.high[i] == null ||
+        quote.low[i] == null
+      ) continue;
+
+      daily.push({
+        date: fmtDate(new Date(timestamps[i] * 1000)),
+        open: Math.round(quote.open[i] * 100) / 100,
+        high: Math.round(quote.high[i] * 100) / 100,
+        low: Math.round(quote.low[i] * 100) / 100,
+        close: Math.round(quote.close[i] * 100) / 100,
+        volume: Math.round(quote.volume[i] || 0),
+      });
+    }
+
+    if (daily.length === 0) throw new Error('No valid candles parsed from Yahoo');
+    return daily;
+  }
+
+  /**
+   * Parse Alpha Vantage TIME_SERIES_DAILY_ADJUSTED JSON.
+   * @param {Object} json – raw AV response
+   * @returns {Array} daily candles
+   */
+  function parseAlphaVantageResponse(json) {
+    const timeSeries = json['Time Series (Daily)'];
+    if (!timeSeries) throw new Error('Unexpected Alpha Vantage payload');
+
+    const daily = Object.entries(timeSeries)
+      .map(([date, vals]) => ({
+        date,
+        open: parseFloat(vals['1. open']),
+        high: parseFloat(vals['2. high']),
+        low: parseFloat(vals['3. low']),
+        close: parseFloat(vals['5. adjusted close'] || vals['4. close']),
+        volume: parseInt(vals['6. volume'] || vals['5. volume'], 10),
+      }))
+      .reverse(); // oldest first
+
+    if (daily.length === 0) throw new Error('No candles from Alpha Vantage');
+    return daily;
+  }
+
+  /**
+   * Try fetching a URL with a timeout.
+   * @param {string} url
+   * @param {number} [timeoutMs=8000]
+   * @returns {Promise<Response>}
+   */
+  function fetchWithTimeout(url, timeoutMs) {
+    timeoutMs = timeoutMs || 8000;
+    const controller = new AbortController();
+    const timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+    return fetch(url, { signal: controller.signal }).finally(function() {
+      clearTimeout(timer);
+    });
+  }
+
+  /**
+   * Strategy 1: Direct Yahoo Finance (works if user has CORS extension or
+   * when running on same-origin / localhost).
+   */
+  async function tryYahooDirect(symbol) {
+    const url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + symbol + '?range=2y&interval=1d';
+    const resp = await fetchWithTimeout(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return parseYahooResponse(await resp.json());
+  }
+
+  /**
+   * Strategy 2: Yahoo Finance via corsproxy.io
+   */
+  async function tryYahooCorsproxy(symbol) {
+    const target = encodeURIComponent(
+      'https://query1.finance.yahoo.com/v8/finance/chart/' + symbol + '?range=2y&interval=1d'
+    );
+    const resp = await fetchWithTimeout('https://corsproxy.io/?' + target);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return parseYahooResponse(await resp.json());
+  }
+
+  /**
+   * Strategy 3: Yahoo Finance via allorigins
+   */
+  async function tryYahooAllOrigins(symbol) {
+    const target = encodeURIComponent(
+      'https://query1.finance.yahoo.com/v8/finance/chart/' + symbol + '?range=2y&interval=1d'
+    );
+    const resp = await fetchWithTimeout('https://api.allorigins.win/raw?url=' + target);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return parseYahooResponse(await resp.json());
+  }
+
+  /**
+   * Strategy 4: Alpha Vantage (requires free API key stored in localStorage).
+   * Get a free key at https://www.alphavantage.co/support/#api-key
+   */
+  async function tryAlphaVantage(symbol) {
+    var apiKey = localStorage.getItem('etf_av_api_key');
+    if (!apiKey) throw new Error('No Alpha Vantage API key configured');
+    var url = 'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=' +
+      symbol + '&outputsize=full&apikey=' + apiKey;
+    var resp = await fetchWithTimeout(url, 12000);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var json = await resp.json();
+    if (json['Note'] || json['Information']) throw new Error('Alpha Vantage rate limit');
+    return parseAlphaVantageResponse(json);
+  }
+
+  /** Index of the last strategy that worked — skip earlier failures for speed. */
+  var _preferredStrategy = -1;
+
+  var _strategies = [
+    { name: 'Yahoo Direct',     fn: tryYahooDirect },
+    { name: 'Yahoo corsproxy',  fn: tryYahooCorsproxy },
+    { name: 'Yahoo allorigins', fn: tryYahooAllOrigins },
+    { name: 'Alpha Vantage',    fn: tryAlphaVantage },
+  ];
+
+  /**
+   * Attempt to fetch real price data using multiple strategies.
+   * Once a strategy succeeds, it becomes the preferred starting point
+   * for subsequent symbols (avoids redundant timeout waits).
+   * Falls back to mock data if all strategies fail.
    *
    * @param {string} symbol
    * @returns {Promise<{ daily: Array, weekly: Array, isLive: boolean }>}
    */
   async function fetchLiveData(symbol) {
-    const url =
-      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=2y&interval=1d`;
-
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-      const json = await resp.json();
-      const result = json.chart.result[0];
-      const timestamps = result.timestamp;
-      const quote = result.indicators.quote[0];
-
-      if (!timestamps || !quote) throw new Error('Unexpected payload shape');
-
-      const daily = [];
-      for (let i = 0; i < timestamps.length; i++) {
-        // Skip days with null data (holidays, etc.)
-        if (
-          quote.open[i] == null ||
-          quote.close[i] == null ||
-          quote.high[i] == null ||
-          quote.low[i] == null
-        ) {
-          continue;
-        }
-
-        const d = new Date(timestamps[i] * 1000);
-        daily.push({
-          date: fmtDate(d),
-          open: Math.round(quote.open[i] * 100) / 100,
-          high: Math.round(quote.high[i] * 100) / 100,
-          low: Math.round(quote.low[i] * 100) / 100,
-          close: Math.round(quote.close[i] * 100) / 100,
-          volume: Math.round(quote.volume[i] || 0),
-        });
-      }
-
-      if (daily.length === 0) throw new Error('No valid candles parsed');
-
-      const weekly = aggregateWeekly(daily);
-
-      console.log(`[DataService] Live data loaded for ${symbol} (${daily.length} candles)`);
-      return { daily, weekly, isLive: true };
-    } catch (err) {
-      console.warn(
-        `[DataService] Live fetch failed for ${symbol}: ${err.message}. Using mock data.`
-      );
-      return generateMockData(symbol);
+    // Check cache first
+    var cached = _cache[symbol];
+    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+      return cached.data;
     }
+
+    // Try preferred strategy first, then fall through to all others
+    var startIdx = _preferredStrategy >= 0 ? _preferredStrategy : 0;
+    var tried = 0;
+
+    for (var attempt = 0; attempt < _strategies.length; attempt++) {
+      var idx = (startIdx + attempt) % _strategies.length;
+      var strat = _strategies[idx];
+      tried++;
+      try {
+        var daily = await strat.fn(symbol);
+        var weekly = aggregateWeekly(daily);
+        var result = { daily: daily, weekly: weekly, isLive: true };
+
+        // Cache result and remember working strategy
+        _cache[symbol] = { data: result, timestamp: Date.now() };
+        _preferredStrategy = idx;
+
+        console.log('[DataService] Live data via ' + strat.name + ' for ' + symbol + ' (' + daily.length + ' candles)');
+        return result;
+      } catch (err) {
+        console.warn('[DataService] ' + strat.name + ' failed for ' + symbol + ': ' + err.message);
+      }
+    }
+
+    // All strategies failed — use mock data
+    _preferredStrategy = -1;
+    console.warn('[DataService] All live sources failed for ' + symbol + '. Using mock data.');
+    return generateMockData(symbol);
   }
 
   // -----------------------------------------------------------------------
