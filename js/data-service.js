@@ -451,10 +451,26 @@
     return parseAlphaVantageResponse(json);
   }
 
+  /**
+   * Strategy 5: Cloudflare Worker API proxy (user-configured).
+   * Set the worker URL in Strategy Settings or localStorage.
+   */
+  async function tryWorkerProxy(symbol) {
+    var workerUrl = localStorage.getItem('etf_worker_url');
+    if (!workerUrl) throw new Error('No Worker API URL configured');
+    // Normalize: strip trailing slash
+    workerUrl = workerUrl.replace(/\/+$/, '');
+    var url = workerUrl + '/api/chart/' + symbol + '?range=2y&interval=1d';
+    var resp = await fetchWithTimeout(url, 6000);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return parseYahooResponse(await resp.json());
+  }
+
   /** Index of the last strategy that worked — skip earlier failures for speed. */
   var _preferredStrategy = -1;
 
   var _strategies = [
+    { name: 'Worker API',       fn: tryWorkerProxy },
     { name: 'Yahoo Direct',     fn: tryYahooDirect },
     { name: 'Yahoo corsproxy',  fn: tryYahooCorsproxy },
     { name: 'Yahoo allorigins', fn: tryYahooAllOrigins },

@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ETF Buy Advisor — Technical Entry Analysis Dashboard</title>
   <meta name="description" content="Institutional-quality technical analysis dashboard for timing ETF accumulation entries. Analyzes SPY, VOO, VTI, VT, VXUS, and QQQ.">
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ETF Advisor">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="css/styles.css">
   <!-- Inline critical font loading -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -209,5 +216,19 @@
   <script src="js/charts.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/app.js"></script>
+  <script>
+    // Register service worker for PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('./sw.js').then(function(reg) {
+          console.log('[PWA] Service worker registered, scope:', reg.scope);
+          // Check for updates periodically
+          setInterval(function() { reg.update(); }, 60 * 60 * 1000);
+        }).catch(function(err) {
+          console.warn('[PWA] Service worker registration failed:', err);
+        });
+      });
+    }
+  </script>
 </body>
 </html>

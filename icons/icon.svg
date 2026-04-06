@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0f1117"/>
+  <rect x="24" y="24" width="464" height="464" rx="80" fill="#1a1d28" stroke="#2a2d3a" stroke-width="4"/>
+  <path d="M100 360 L180 280 L240 320 L380 160" stroke="#3b82f6" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="380" cy="160" r="20" fill="#3b82f6"/>
+  <circle cx="380" cy="160" r="10" fill="#1a1d28"/>
+  <path d="M100 380 L180 340 L240 355 L300 310 L380 330" stroke="#22c55e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.5"/>
+  <text x="256" y="460" text-anchor="middle" fill="#8b8d97" font-family="system-ui,sans-serif" font-size="48" font-weight="600">ETF ADVISOR</text>
+</svg>

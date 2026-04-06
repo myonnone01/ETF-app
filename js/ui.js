@@ -493,42 +493,82 @@ window.UI = (function() {
 
     // Data Source settings
     var savedKey = localStorage.getItem('etf_av_api_key') || '';
+    var savedWorkerUrl = localStorage.getItem('etf_worker_url') || '';
     html += '<div class="data-source-settings" style="margin-top:24px;padding-top:18px;border-top:1px solid #2a2d3a">' +
       '<h3 style="font-size:0.95rem;margin-bottom:10px;color:#c8cad0">Data Source</h3>' +
       '<p style="font-size:0.8rem;color:#8b8d97;margin-bottom:12px">' +
-        'The app tries multiple live data sources automatically (Yahoo Finance via CORS proxies). ' +
-        'For a reliable backup, add a free Alpha Vantage API key.' +
+        'The app tries data sources in order: Worker API &rarr; Yahoo Direct &rarr; CORS Proxies &rarr; Alpha Vantage &rarr; Mock Data. ' +
+        'Configure optional sources below for the most reliable live data.' +
       '</p>' +
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-        '<input type="text" id="av-api-key" placeholder="Alpha Vantage API Key (optional)" ' +
-          'value="' + savedKey + '" ' +
-          'style="flex:1;min-width:200px;padding:8px 12px;background:#12141c;border:1px solid #2a2d3a;border-radius:6px;color:#e8e9ed;font-size:0.85rem;font-family:inherit">' +
-        '<button id="save-av-key" style="padding:8px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-family:inherit">Save Key</button>' +
-        '<button id="refresh-data" style="padding:8px 16px;background:#22c55e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-family:inherit">Refresh Data</button>' +
+      // Worker URL
+      '<div style="margin-bottom:12px">' +
+        '<label style="font-size:0.8rem;color:#8b8d97;display:block;margin-bottom:4px">Cloudflare Worker URL <span style="color:#6b6d77">(fastest, most reliable)</span></label>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<input type="text" id="worker-url" placeholder="https://etf-buy-advisor-api.yourname.workers.dev" ' +
+            'value="' + savedWorkerUrl + '" ' +
+            'style="flex:1;min-width:250px;padding:8px 12px;background:#12141c;border:1px solid #2a2d3a;border-radius:6px;color:#e8e9ed;font-size:0.85rem;font-family:inherit">' +
+          '<button id="save-worker-url" style="padding:8px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-family:inherit">Save</button>' +
+        '</div>' +
+        '<p style="font-size:0.75rem;color:#6b6d77;margin-top:4px">' +
+          'Deploy your own free API proxy in 2 min. See <code style="color:#8b8d97">worker/README.md</code> in the repo.' +
+        '</p>' +
+      '</div>' +
+      // Alpha Vantage key
+      '<div style="margin-bottom:12px">' +
+        '<label style="font-size:0.8rem;color:#8b8d97;display:block;margin-bottom:4px">Alpha Vantage API Key <span style="color:#6b6d77">(backup source)</span></label>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<input type="text" id="av-api-key" placeholder="Your free API key" ' +
+            'value="' + savedKey + '" ' +
+            'style="flex:1;min-width:200px;padding:8px 12px;background:#12141c;border:1px solid #2a2d3a;border-radius:6px;color:#e8e9ed;font-size:0.85rem;font-family:inherit">' +
+          '<button id="save-av-key" style="padding:8px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-family:inherit">Save</button>' +
+        '</div>' +
+        '<p style="font-size:0.75rem;color:#6b6d77;margin-top:4px">' +
+          'Get a free key at <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener" style="color:#3b82f6">alphavantage.co</a> (25 requests/day).' +
+        '</p>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<button id="refresh-data" style="padding:8px 16px;background:#22c55e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-family:inherit">Refresh Data Now</button>' +
+        '<span id="data-source-status" style="font-size:0.8rem;color:#8b8d97"></span>' +
       '</div>' +
       '<p style="font-size:0.75rem;color:#6b6d77;margin-top:8px">' +
-        'Get a free key at <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener" style="color:#3b82f6">alphavantage.co</a> (25 requests/day). ' +
-        'Key is stored locally in your browser only.' +
+        'All settings are stored locally in your browser only. No data is sent to third parties except the configured data providers.' +
       '</p>' +
     '</div>';
 
     el.innerHTML = html;
 
     // Bind data source buttons
-    var saveBtn = document.getElementById('save-av-key');
+    var saveWorkerBtn = document.getElementById('save-worker-url');
+    var saveAvBtn = document.getElementById('save-av-key');
     var refreshBtn = document.getElementById('refresh-data');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', function() {
+
+    function flashButton(btn, msg, origMsg) {
+      btn.textContent = msg;
+      btn.style.background = '#22c55e';
+      setTimeout(function() { btn.textContent = origMsg; btn.style.background = '#3b82f6'; }, 2000);
+    }
+
+    if (saveWorkerBtn) {
+      saveWorkerBtn.addEventListener('click', function() {
+        var url = document.getElementById('worker-url').value.trim();
+        if (url) {
+          localStorage.setItem('etf_worker_url', url);
+          flashButton(saveWorkerBtn, 'Saved!', 'Save');
+        } else {
+          localStorage.removeItem('etf_worker_url');
+          flashButton(saveWorkerBtn, 'Cleared', 'Save');
+        }
+      });
+    }
+    if (saveAvBtn) {
+      saveAvBtn.addEventListener('click', function() {
         var key = document.getElementById('av-api-key').value.trim();
         if (key) {
           localStorage.setItem('etf_av_api_key', key);
-          saveBtn.textContent = 'Saved!';
-          saveBtn.style.background = '#22c55e';
-          setTimeout(function() { saveBtn.textContent = 'Save Key'; saveBtn.style.background = '#3b82f6'; }, 2000);
+          flashButton(saveAvBtn, 'Saved!', 'Save');
         } else {
           localStorage.removeItem('etf_av_api_key');
-          saveBtn.textContent = 'Cleared';
-          setTimeout(function() { saveBtn.textContent = 'Save Key'; saveBtn.style.background = '#3b82f6'; }, 2000);
+          flashButton(saveAvBtn, 'Cleared', 'Save');
         }
       });
     }
@@ -536,12 +576,16 @@ window.UI = (function() {
       refreshBtn.addEventListener('click', function() {
         refreshBtn.textContent = 'Refreshing...';
         refreshBtn.disabled = true;
+        // Clear the service worker data cache so we get fresh data
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_DATA_CACHE' });
+        }
         if (window.App && window.App.init) {
           window.App.init().then(function() {
-            refreshBtn.textContent = 'Refresh Data';
+            refreshBtn.textContent = 'Refresh Data Now';
             refreshBtn.disabled = false;
           }).catch(function() {
-            refreshBtn.textContent = 'Refresh Data';
+            refreshBtn.textContent = 'Refresh Data Now';
             refreshBtn.disabled = false;
           });
         }
